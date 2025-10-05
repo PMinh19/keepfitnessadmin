@@ -1,17 +1,17 @@
-
 package com.example.keepyfitnessadmin
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ProgressBar
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.keepyfitnessadmin.model.User
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,9 +23,8 @@ import kotlinx.coroutines.tasks.await
 class AdminUsersFragment : Fragment() {
 
     private lateinit var db: FirebaseFirestore
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var userAdapter: UserAdapter
-    private lateinit var progressBar: ProgressBar
+    private var tableLayout: TableLayout? = null
+    private var progressBar: ProgressBar? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -34,19 +33,16 @@ class AdminUsersFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_admin_users, container, false)
 
         db = FirebaseFirestore.getInstance()
-        recyclerView = view.findViewById(R.id.userRecyclerView)
+        tableLayout = view.findViewById(R.id.userTable)
         progressBar = view.findViewById(R.id.progressBarUsers)
-        recyclerView.layoutManager = LinearLayoutManager(context)
 
-        userAdapter = UserAdapter(mutableListOf()) { user ->
-            // Chuyển sang UserDetailsActivity khi click vào user
-            val intent = Intent(activity, UserDetailsActivity::class.java).apply {
-                putExtra("USER_ID", user.id)
-                putExtra("USER_EMAIL", user.email)
+        if (tableLayout == null || progressBar == null) {
+            Log.e("AdminUsers", "Failed to find userTable or progressBarUsers in layout")
+            view?.let {
+                Snackbar.make(it, "Lỗi giao diện, kiểm tra file fragment_admin_users.xml", Snackbar.LENGTH_LONG).show()
             }
-            startActivity(intent)
+            return view
         }
-        recyclerView.adapter = userAdapter
 
         loadUsers()
 
@@ -54,7 +50,7 @@ class AdminUsersFragment : Fragment() {
     }
 
     private fun loadUsers() {
-        progressBar.visibility = View.VISIBLE
+        progressBar?.visibility = View.VISIBLE
         Log.d("AdminUsers", "Starting query for users")
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -71,20 +67,20 @@ class AdminUsersFragment : Fragment() {
                     }
                 }
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.d("AdminUsers", "Loaded ${userList.size} users")
                     if (userList.isEmpty()) {
-                        activity?.findViewById<View>(android.R.id.content)?.let {
+                        view?.let {
                             Snackbar.make(it, "Không có người dùng nào được tải", Snackbar.LENGTH_LONG).show()
                         }
                     }
-                    userAdapter.updateUsers(userList)
+                    updateTable(userList)
                 }
             } catch (e: Exception) {
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.e("AdminUsers", "Error loading users: ${e.message}")
-                    activity?.findViewById<View>(android.R.id.content)?.let {
+                    view?.let {
                         Snackbar.make(it, "Lỗi tải người dùng: ${e.message}", Snackbar.LENGTH_LONG).show()
                     }
                 }
@@ -92,40 +88,70 @@ class AdminUsersFragment : Fragment() {
         }
     }
 
-    inner class UserAdapter(
-        private val users: MutableList<User>,
-        private val onClick: (User) -> Unit
-    ) : RecyclerView.Adapter<UserAdapter.ViewHolder>() {
+    private fun updateTable(users: List<User>) {
+        val table = tableLayout ?: return
+        // Clear existing rows except the header
+        while (table.childCount > 1) {
+            table.removeViewAt(1)
+        }
 
-        inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val userEmailText: TextView = itemView.findViewById(R.id.userEmailText)
-            val userRoleText: TextView = itemView.findViewById(R.id.userRoleText)
-
-            fun bind(user: User) {
-                userEmailText.text = user.email
-                userRoleText.text = "${user.role}"
-                itemView.setOnClickListener {
-                    onClick(user)
+        // Add user rows dynamically
+        for ((index, user) in users.withIndex()) {
+            val tableRow = TableRow(context).apply {
+                layoutParams = TableLayout.LayoutParams(
+                    TableLayout.LayoutParams.MATCH_PARENT,
+                    TableLayout.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(8, 8, 8, 8)
+                // Alternating semi-transparent backgrounds for contrast
+                setBackgroundColor(if (index % 2 == 0) 0xCCFFFFFF.toInt() else 0xCCF5F5F5.toInt())
+                setOnClickListener {
+                    try {
+                        val intent = Intent(activity, UserDetailsActivity::class.java).apply {
+                            putExtra("USER_ID", user.id)
+                            putExtra("USER_EMAIL", user.email)
+                        }
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Log.e("AdminUsers", "Error starting UserDetailsActivity: ${e.message}")
+                        view?.let {
+                            Snackbar.make(it, "Lỗi khi mở chi tiết người dùng", Snackbar.LENGTH_LONG).show()
+                        }
+                    }
                 }
             }
-        }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_user_admin, parent, false)
-            return ViewHolder(view)
-        }
+            val emailTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = user.email.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            holder.bind(users[position])
-        }
+            val roleTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = user.role.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun getItemCount(): Int = users.size
-
-        fun updateUsers(newUsers: List<User>) {
-            users.clear()
-            users.addAll(newUsers)
-            notifyDataSetChanged()
+            tableRow.addView(emailTextView)
+            tableRow.addView(roleTextView)
+            table.addView(tableRow)
         }
     }
 }

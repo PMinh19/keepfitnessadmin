@@ -1,6 +1,7 @@
 package com.example.keepyfitnessadmin
 
 import android.os.Bundle
+import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -34,9 +35,9 @@ class UserDetailsActivity : AppCompatActivity() {
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
             when (position) {
-                0 -> tab.text = "Workouts"
-                1 -> tab.text = "Heart Rate"
-                2 -> tab.text = "Schedules"
+                0 -> tab.text = "Bài tập"
+                1 -> tab.text = "Nhịp tim"
+                2 -> tab.text = "Lịch trình"
             }
         }.attach()
 

@@ -1,6 +1,6 @@
-
 package com.example.keepyfitnessadmin
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -8,10 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.keepyfitnessadmin.model.Schedule
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,9 +23,9 @@ import kotlinx.coroutines.tasks.await
 class AdminSchedulesFragment : Fragment() {
 
     private lateinit var db: FirebaseFirestore
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var scheduleAdapter: ScheduleAdapter
-    private lateinit var progressBar: ProgressBar
+    private var progressBar: ProgressBar? = null
+    private var tableLayout: TableLayout? = null
+    private var btnReload: Button? = null
     private var userId: String? = null
     private var userEmail: String? = null
 
@@ -40,46 +40,30 @@ class AdminSchedulesFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.fragment_admin_schedules, container, false)
-
         db = FirebaseFirestore.getInstance()
-        recyclerView = view.findViewById(R.id.scheduleRecyclerView)
         progressBar = view.findViewById(R.id.progressBarSchedules)
-        recyclerView.layoutManager = LinearLayoutManager(context)
+        tableLayout = view.findViewById(R.id.scheduleTable)
+        btnReload = view.findViewById(R.id.btnReload)
 
-        scheduleAdapter = ScheduleAdapter(mutableListOf()) { schedule, userId, scheduleId ->
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    db.collection("users").document(userId).collection("schedules").document(scheduleId)
-                        .delete().await()
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Đã xóa lịch: ${schedule.exercise}", Snackbar.LENGTH_LONG).show()
-                        }
-                        loadSchedules()
-                    }
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Lỗi xóa lịch: ${e.message}", Snackbar.LENGTH_LONG).show()
-                        }
-                        Log.e("AdminSchedules", "Delete error: ${e.message}")
-                    }
-                }
+        if (tableLayout == null || progressBar == null || btnReload == null) {
+            Log.e("AdminSchedules", "Không tìm thấy scheduleTable, progressBarSchedules hoặc btnReload trong giao diện")
+            view?.let {
+                Snackbar.make(it, "Lỗi giao diện, kiểm tra file fragment_admin_schedules.xml", Snackbar.LENGTH_LONG).show()
             }
+            return view
         }
-        recyclerView.adapter = scheduleAdapter
 
-        view.findViewById<Button>(R.id.btnRefreshSchedules)?.setOnClickListener {
+        btnReload?.setOnClickListener {
             loadSchedules()
+            Snackbar.make(it, "Đã tải lại trang", Snackbar.LENGTH_SHORT).show()
         }
 
         loadSchedules()
-
         return view
     }
 
     private fun loadSchedules() {
-        progressBar.visibility = View.VISIBLE
+        progressBar?.visibility = View.VISIBLE
         Log.d("AdminSchedules", "Starting query for schedules, UserId: $userId")
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -88,33 +72,31 @@ class AdminSchedulesFragment : Fragment() {
                 } else {
                     db.collection("users").document(userId!!).collection("schedules").get().await()
                 }
-                val scheduleList = mutableListOf<ScheduleItem>()
+                val scheduleList = mutableListOf<Schedule>()
                 for (document in documents) {
                     try {
                         val schedule = document.toObject(Schedule::class.java) ?: Schedule()
-                        val docUserId = document.reference.parent.parent?.id ?: "Unknown"
-                        val scheduleId = document.id
-                        Log.d("AdminSchedules", "Schedule: ${schedule.exercise}, Time: ${schedule.time}, Days: ${schedule.days}, Quantity: ${schedule.quantity}, User: $docUserId, ID: $scheduleId")
-                        scheduleList.add(ScheduleItem(schedule, docUserId, scheduleId))
+                        scheduleList.add(schedule)
+                        Log.d("AdminSchedules", "Lịch: ${schedule.exercise}, Thời gian: ${schedule.time}, Ngày: ${schedule.days}, Số lượng: ${schedule.quantity}, ID: ${document.id}")
                     } catch (e: Exception) {
                         Log.e("AdminSchedules", "Error deserializing schedule document ${document.id}: ${e.message}")
                     }
                 }
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.d("AdminSchedules", "Loaded ${scheduleList.size} schedules")
                     if (scheduleList.isEmpty()) {
-                        view?.findViewById<View>(android.R.id.content)?.let {
+                        view?.let {
                             Snackbar.make(it, "Không có lịch nào được tải", Snackbar.LENGTH_LONG).show()
                         }
                     }
-                    scheduleAdapter.updateSchedules(scheduleList)
+                    updateTable(scheduleList)
                 }
             } catch (e: Exception) {
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.e("AdminSchedules", "Error loading schedules: ${e.message}")
-                    view?.findViewById<View>(android.R.id.content)?.let {
+                    view?.let {
                         Snackbar.make(it, "Lỗi tải lịch: ${e.message}", Snackbar.LENGTH_LONG).show()
                     }
                 }
@@ -122,48 +104,83 @@ class AdminSchedulesFragment : Fragment() {
         }
     }
 
-    data class ScheduleItem(val schedule: Schedule, val userId: String, val scheduleId: String)
+    private fun updateTable(schedules: List<Schedule>) {
+        val table = tableLayout ?: return
+        while (table.childCount > 1) {
+            table.removeViewAt(1)
+        }
 
-    inner class ScheduleAdapter(
-        private val schedules: MutableList<ScheduleItem>,
-        private val onLongClick: (Schedule, String, String) -> Unit
-    ) : RecyclerView.Adapter<ScheduleAdapter.ViewHolder>() {
-
-        inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val scheduleNameText: TextView = itemView.findViewById(R.id.scheduleNameText)
-            val userEmailText: TextView = itemView.findViewById(R.id.userEmailText)
-
-            fun bind(scheduleItem: ScheduleItem) {
-                scheduleNameText.text = scheduleItem.schedule.exercise
-                userEmailText.text = buildString {
-                    append("Email: $userEmail")
-                    append(", Time: ${scheduleItem.schedule.time}")
-                    append(", Days: ${scheduleItem.schedule.days.joinToString()}")
-                    append(", Quantity: ${scheduleItem.schedule.quantity}")
-                }
-                itemView.setOnLongClickListener {
-                    onLongClick(scheduleItem.schedule, scheduleItem.userId, scheduleItem.scheduleId)
-                    true
-                }
+        for ((index, schedule) in schedules.withIndex()) {
+            val tableRow = TableRow(context).apply {
+                layoutParams = TableLayout.LayoutParams(
+                    TableLayout.LayoutParams.MATCH_PARENT,
+                    TableLayout.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(8, 8, 8, 8)
+                setBackgroundColor(if (index % 2 == 0) 0xCCFFFFFF.toInt() else 0xCCF5F5F5.toInt())
             }
-        }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_schedule_admin, parent, false)
-            return ViewHolder(view)
-        }
+            val exerciseTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = schedule.exercise.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            holder.bind(schedules[position])
-        }
+            val timeTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = schedule.time.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun getItemCount(): Int = schedules.size
+            val daysTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = schedule.days.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        fun updateSchedules(newSchedules: List<ScheduleItem>) {
-            schedules.clear()
-            schedules.addAll(newSchedules)
-            notifyDataSetChanged()
+            val quantityTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = schedule.quantity.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            tableRow.addView(exerciseTextView)
+            tableRow.addView(timeTextView)
+            tableRow.addView(daysTextView)
+            tableRow.addView(quantityTextView)
+            table.addView(tableRow)
         }
     }
 }

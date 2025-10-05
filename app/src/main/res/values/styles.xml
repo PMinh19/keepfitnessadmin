@@ -6,9 +6,9 @@
         <item name="colorOnPrimary">@color/white</item>
     </style>
 
-    <!-- Style for TabLayout text -->
-    <style name="TabTextAppearance" parent="TextAppearance.Design.Tab">
+    <style name="TabTextStyle" parent="TextAppearance.Design.Tab">
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 </resources>

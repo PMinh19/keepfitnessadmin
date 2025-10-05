@@ -1,6 +1,6 @@
-
 package com.example.keepyfitnessadmin
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -8,10 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.keepyfitnessadmin.model.Workout
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.firestore.FirebaseFirestore
@@ -25,9 +25,9 @@ import java.util.*
 class AdminWorkoutsFragment : Fragment() {
 
     private lateinit var db: FirebaseFirestore
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var workoutAdapter: WorkoutAdapter
-    private lateinit var progressBar: ProgressBar
+    private var progressBar: ProgressBar? = null
+    private var tableLayout: TableLayout? = null
+    private var btnReload: Button? = null
     private var userId: String? = null
     private var userEmail: String? = null
 
@@ -42,68 +42,30 @@ class AdminWorkoutsFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.fragment_admin_workouts, container, false)
-
         db = FirebaseFirestore.getInstance()
-        recyclerView = view.findViewById(R.id.workoutRecyclerView)
         progressBar = view.findViewById(R.id.progressBarWorkouts)
-        recyclerView.layoutManager = LinearLayoutManager(context)
+        tableLayout = view.findViewById(R.id.workoutTable)
+        btnReload = view.findViewById(R.id.btnReload)
 
-        workoutAdapter = WorkoutAdapter(mutableListOf()) { workout, userId, workoutId ->
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    db.collection("users").document(userId).collection("workouts").document(workoutId)
-                        .delete().await()
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Đã xóa workout: ${workout.exerciseName}", Snackbar.LENGTH_LONG).show()
-                        }
-                        loadWorkouts()
-                    }
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Lỗi xóa workout: ${e.message}", Snackbar.LENGTH_LONG).show()
-                        }
-                        Log.e("AdminWorkouts", "Delete error: ${e.message}")
-                    }
-                }
+        if (tableLayout == null || progressBar == null || btnReload == null) {
+            Log.e("AdminWorkouts", "Không tìm thấy workoutTable, progressBarWorkouts hoặc btnReload trong giao diện")
+            view?.let {
+                Snackbar.make(it, "Lỗi giao diện, kiểm tra file fragment_admin_workouts.xml", Snackbar.LENGTH_LONG).show()
             }
+            return view
         }
-        recyclerView.adapter = workoutAdapter
 
-        view.findViewById<Button>(R.id.btnDeleteAllWorkouts)?.setOnClickListener {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val documents = db.collectionGroup("workouts").get().await()
-                    val deletePromises = documents.documents.map { doc ->
-                        db.collection("users").document(doc.reference.parent.parent?.id!!)
-                            .collection("workouts").document(doc.id).delete()
-                    }
-                    deletePromises.forEach { it.await() } // Thay awaitAll bằng vòng lặp
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Đã xóa tất cả workouts", Snackbar.LENGTH_LONG).show()
-                        }
-                        loadWorkouts()
-                    }
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Lỗi xóa tất cả workouts: ${e.message}", Snackbar.LENGTH_LONG).show()
-                        }
-                        Log.e("AdminWorkouts", "Delete all error: ${e.message}")
-                    }
-                }
-            }
+        btnReload?.setOnClickListener {
+            loadWorkouts()
+            Snackbar.make(it, "Đã tải lại trang", Snackbar.LENGTH_SHORT).show()
         }
 
         loadWorkouts()
-
         return view
     }
 
     private fun loadWorkouts() {
-        progressBar.visibility = View.VISIBLE
+        progressBar?.visibility = View.VISIBLE
         Log.d("AdminWorkouts", "Starting query for workouts, UserId: $userId")
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -112,82 +74,164 @@ class AdminWorkoutsFragment : Fragment() {
                 } else {
                     db.collection("users").document(userId!!).collection("workouts").get().await()
                 }
-                val workoutList = mutableListOf<WorkoutItem>()
+                val workoutList = mutableListOf<Workout>()
                 for (document in documents) {
                     try {
                         val workout = document.toObject(Workout::class.java) ?: Workout()
-                        val docUserId = document.reference.parent.parent?.id ?: "Unknown"
-                        val workoutId = document.id
-                        Log.d("AdminWorkouts", "Workout: ${workout.exerciseName}, Duration: ${workout.duration}, Calories: ${workout.caloriesBurned}, User: $docUserId, ID: $workoutId")
-                        workoutList.add(WorkoutItem(workout, docUserId, workoutId))
+                        workoutList.add(workout.copy(id = document.id))
+                        Log.d("AdminWorkouts", "Bài tập: ${workout.exerciseName}, Thời gian: ${workout.duration}, Calo: ${workout.caloriesBurned}, Ngày: ${workout.date}, Số lần: ${workout.count}, Hoàn thành: ${workout.completed}, Mục tiêu: ${workout.targetCount}, ID bài tập: ${workout.exerciseId}")
                     } catch (e: Exception) {
                         Log.e("AdminWorkouts", "Error deserializing workout document ${document.id}: ${e.message}")
                     }
                 }
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.d("AdminWorkouts", "Loaded ${workoutList.size} workouts")
                     if (workoutList.isEmpty()) {
-                        view?.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Không có workout nào được tải", Snackbar.LENGTH_LONG).show()
+                        view?.let {
+                            Snackbar.make(it, "Không có bài tập nào được tải", Snackbar.LENGTH_LONG).show()
                         }
                     }
-                    workoutAdapter.updateWorkouts(workoutList)
+                    updateTable(workoutList)
                 }
             } catch (e: Exception) {
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.e("AdminWorkouts", "Error loading workouts: ${e.message}")
-                    view?.findViewById<View>(android.R.id.content)?.let {
-                        Snackbar.make(it, "Lỗi tải workout: ${e.message}", Snackbar.LENGTH_LONG).show()
+                    view?.let {
+                        Snackbar.make(it, "Lỗi tải bài tập: ${e.message}", Snackbar.LENGTH_LONG).show()
                     }
                 }
             }
         }
     }
 
-    data class WorkoutItem(val workout: Workout, val userId: String, val workoutId: String)
+    private fun updateTable(workouts: List<Workout>) {
+        val table = tableLayout ?: return
+        while (table.childCount > 1) {
+            table.removeViewAt(1)
+        }
 
-    inner class WorkoutAdapter(
-        private val workouts: MutableList<WorkoutItem>,
-        private val onLongClick: (Workout, String, String) -> Unit
-    ) : RecyclerView.Adapter<WorkoutAdapter.ViewHolder>() {
-
-        inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val workoutNameText: TextView = itemView.findViewById(R.id.workoutNameText)
-            val userEmailText: TextView = itemView.findViewById(R.id.userEmailText)
-
-            fun bind(workoutItem: WorkoutItem) {
-                workoutNameText.text = workoutItem.workout.exerciseName
-                userEmailText.text = buildString {
-                    append("User ID: ${workoutItem.userId}")
-                    append(", Duration: ${workoutItem.workout.duration} ms")
-                    append(", Calories: ${workoutItem.workout.caloriesBurned}")
-                    append(", Date: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(workoutItem.workout.date))}")
-                }
-                itemView.setOnLongClickListener {
-                    onLongClick(workoutItem.workout, workoutItem.userId, workoutItem.workoutId)
-                    true
-                }
+        for ((index, workout) in workouts.withIndex()) {
+            val tableRow = TableRow(context).apply {
+                layoutParams = TableLayout.LayoutParams(
+                    TableLayout.LayoutParams.MATCH_PARENT,
+                    TableLayout.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(8, 8, 8, 8)
+                setBackgroundColor(if (index % 2 == 0) 0xCCFFFFFF.toInt() else 0xCCF5F5F5.toInt())
             }
-        }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_workout_admin, parent, false)
-            return ViewHolder(view)
-        }
+            val nameTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = workout.exerciseName.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            holder.bind(workouts[position])
-        }
+            val durationTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = workout.duration.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun getItemCount(): Int = workouts.size
+            val caloriesTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = workout.caloriesBurned.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        fun updateWorkouts(newWorkouts: List<WorkoutItem>) {
-            workouts.clear()
-            workouts.addAll(newWorkouts)
-            notifyDataSetChanged()
+            val dateTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = try {
+                    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(workout.date))
+                } catch (e: Exception) {
+                    "N/A"
+                }
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            val countTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = workout.count.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            val completedTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = if (workout.completed) "Có" else "Không"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            val targetCountTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = workout.targetCount.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            tableRow.addView(nameTextView)
+            tableRow.addView(durationTextView)
+            tableRow.addView(caloriesTextView)
+            tableRow.addView(dateTextView)
+            tableRow.addView(countTextView)
+            tableRow.addView(completedTextView)
+            tableRow.addView(targetCountTextView)
+            table.addView(tableRow)
         }
     }
 }

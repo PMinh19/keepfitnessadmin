@@ -1,6 +1,6 @@
-
 package com.example.keepyfitnessadmin
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -8,10 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.keepyfitnessadmin.model.HeartRateData
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.firestore.FirebaseFirestore
@@ -25,9 +25,9 @@ import java.util.*
 class AdminHeartRateFragment : Fragment() {
 
     private lateinit var db: FirebaseFirestore
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var heartRateAdapter: HeartRateAdapter
-    private lateinit var progressBar: ProgressBar
+    private var progressBar: ProgressBar? = null
+    private var tableLayout: TableLayout? = null
+    private var btnReload: Button? = null
     private var userId: String? = null
     private var userEmail: String? = null
 
@@ -42,46 +42,30 @@ class AdminHeartRateFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.fragment_admin_heart_rate, container, false)
-
         db = FirebaseFirestore.getInstance()
-        recyclerView = view.findViewById(R.id.heartRateRecyclerView)
         progressBar = view.findViewById(R.id.progressBarHeartRate)
-        recyclerView.layoutManager = LinearLayoutManager(context)
+        tableLayout = view.findViewById(R.id.heartRateTable)
+        btnReload = view.findViewById(R.id.btnReload)
 
-        heartRateAdapter = HeartRateAdapter(mutableListOf()) { heartRate, userId, heartRateId ->
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    db.collection("users").document(userId).collection("healthMetrics").document(heartRateId)
-                        .delete().await()
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Đã xóa nhịp tim", Snackbar.LENGTH_LONG).show()
-                        }
-                        loadHeartRates()
-                    }
-                } catch (e: Exception) {
-                    activity?.runOnUiThread {
-                        view.findViewById<View>(android.R.id.content)?.let {
-                            Snackbar.make(it, "Lỗi xóa nhịp tim: ${e.message}", Snackbar.LENGTH_LONG).show()
-                        }
-                        Log.e("AdminHeartRate", "Delete error: ${e.message}")
-                    }
-                }
+        if (tableLayout == null || progressBar == null || btnReload == null) {
+            Log.e("AdminHeartRate", "Không tìm thấy heartRateTable, progressBarHeartRate hoặc btnReload trong giao diện")
+            view?.let {
+                Snackbar.make(it, "Lỗi giao diện, kiểm tra file fragment_admin_heart_rate.xml", Snackbar.LENGTH_LONG).show()
             }
+            return view
         }
-        recyclerView.adapter = heartRateAdapter
 
-        view.findViewById<Button>(R.id.btnRefreshHeartRate)?.setOnClickListener {
+        btnReload?.setOnClickListener {
             loadHeartRates()
+            Snackbar.make(it, "Đã tải lại trang", Snackbar.LENGTH_SHORT).show()
         }
 
         loadHeartRates()
-
         return view
     }
 
     private fun loadHeartRates() {
-        progressBar.visibility = View.VISIBLE
+        progressBar?.visibility = View.VISIBLE
         Log.d("AdminHeartRate", "Starting query for heart rates, UserId: $userId")
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -90,33 +74,31 @@ class AdminHeartRateFragment : Fragment() {
                 } else {
                     db.collection("users").document(userId!!).collection("healthMetrics").get().await()
                 }
-                val heartRateList = mutableListOf<HeartRateItem>()
+                val heartRateList = mutableListOf<HeartRateData>()
                 for (document in documents) {
                     try {
                         val heartRate = document.toObject(HeartRateData::class.java) ?: HeartRateData()
-                        val docUserId = document.reference.parent.parent?.id ?: "Unknown"
-                        val heartRateId = document.id
-                        Log.d("AdminHeartRate", "HeartRate: ${heartRate.bpm} bpm, Status: ${heartRate.status}, Suggestion: ${heartRate.suggestion}, Time: ${heartRate.timestamp}, Duration: ${heartRate.duration}, User: $docUserId, ID: $heartRateId")
-                        heartRateList.add(HeartRateItem(heartRate, docUserId, heartRateId))
+                        heartRateList.add(heartRate.copy(id = document.id))
+                        Log.d("AdminHeartRate", "Nhịp tim: ${heartRate.bpm} bpm, Trạng thái: ${heartRate.status}, Gợi ý: ${heartRate.suggestion}, Thời gian: ${heartRate.timestamp}, Thời lượng: ${heartRate.duration}, ID: ${document.id}")
                     } catch (e: Exception) {
                         Log.e("AdminHeartRate", "Error deserializing heart rate document ${document.id}: ${e.message}")
                     }
                 }
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.d("AdminHeartRate", "Loaded ${heartRateList.size} heart rates")
                     if (heartRateList.isEmpty()) {
-                        view?.findViewById<View>(android.R.id.content)?.let {
+                        view?.let {
                             Snackbar.make(it, "Không có nhịp tim nào được tải", Snackbar.LENGTH_LONG).show()
                         }
                     }
-                    heartRateAdapter.updateHeartRates(heartRateList)
+                    updateTable(heartRateList)
                 }
             } catch (e: Exception) {
                 activity?.runOnUiThread {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Log.e("AdminHeartRate", "Error loading heart rates: ${e.message}")
-                    view?.findViewById<View>(android.R.id.content)?.let {
+                    view?.let {
                         Snackbar.make(it, "Lỗi tải nhịp tim: ${e.message}", Snackbar.LENGTH_LONG).show()
                     }
                 }
@@ -124,49 +106,102 @@ class AdminHeartRateFragment : Fragment() {
         }
     }
 
-    data class HeartRateItem(val heartRate: HeartRateData, val userId: String, val heartRateId: String)
+    private fun updateTable(heartRates: List<HeartRateData>) {
+        val table = tableLayout ?: return
+        while (table.childCount > 1) {
+            table.removeViewAt(1)
+        }
 
-    inner class HeartRateAdapter(
-        private val heartRates: MutableList<HeartRateItem>,
-        private val onLongClick: (HeartRateData, String, String) -> Unit
-    ) : RecyclerView.Adapter<HeartRateAdapter.ViewHolder>() {
-
-        inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            val heartRateText: TextView = itemView.findViewById(R.id.heartRateText)
-            val userEmailText: TextView = itemView.findViewById(R.id.userEmailText)
-
-            fun bind(heartRateItem: HeartRateItem) {
-                heartRateText.text = "Heart Rate: ${heartRateItem.heartRate.bpm} bpm"
-                userEmailText.text = buildString {
-                    append("Email: $userEmail")
-                    append(", Status: ${heartRateItem.heartRate.status}")
-                    append(", Suggestion: ${heartRateItem.heartRate.suggestion}")
-                    append(", Time: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(heartRateItem.heartRate.timestamp))}")
-                    append(", Duration: ${heartRateItem.heartRate.duration} ms")
-                }
-                itemView.setOnLongClickListener {
-                    onLongClick(heartRateItem.heartRate, heartRateItem.userId, heartRateItem.heartRateId)
-                    true
-                }
+        for ((index, heartRate) in heartRates.withIndex()) {
+            val tableRow = TableRow(context).apply {
+                layoutParams = TableLayout.LayoutParams(
+                    TableLayout.LayoutParams.MATCH_PARENT,
+                    TableLayout.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(8, 8, 8, 8)
+                setBackgroundColor(if (index % 2 == 0) 0xCCFFFFFF.toInt() else 0xCCF5F5F5.toInt())
             }
-        }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_heart_rate_admin, parent, false)
-            return ViewHolder(view)
-        }
+            val bpmTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = heartRate.bpm.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            holder.bind(heartRates[position])
-        }
+            val statusTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = heartRate.status.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        override fun getItemCount(): Int = heartRates.size
+            val suggestionTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = heartRate.suggestion.takeIf { it.isNotEmpty() } ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
 
-        fun updateHeartRates(newHeartRates: List<HeartRateItem>) {
-            heartRates.clear()
-            heartRates.addAll(newHeartRates)
-            notifyDataSetChanged()
+            val timestampTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = try {
+                    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(heartRate.timestamp))
+                } catch (e: Exception) {
+                    "N/A"
+                }
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            val durationTextView = TextView(context).apply {
+                layoutParams = TableRow.LayoutParams(
+                    0,
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                text = heartRate.duration.takeIf { it > 0 }?.toString() ?: "N/A"
+                textSize = 16f
+                setTextColor(0xFF000000.toInt())
+                setTypeface(null, Typeface.BOLD)
+                setPadding(8, 8, 8, 8)
+                gravity = android.view.Gravity.CENTER
+            }
+
+            tableRow.addView(bpmTextView)
+            tableRow.addView(statusTextView)
+            tableRow.addView(suggestionTextView)
+            tableRow.addView(timestampTextView)
+            tableRow.addView(durationTextView)
+            table.addView(tableRow)
         }
     }
 }
