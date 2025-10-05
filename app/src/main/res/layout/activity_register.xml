@@ -61,7 +61,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="KeepYFitness"
+                android:text="KeepYFitnessAdmin"
                 android:textSize="28sp"
                 android:textStyle="bold"
                 android:textColor="@color/green"
@@ -72,7 +72,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Đăng ký tài khoản mới"
+                android:text="Tạo tài khoản mới"
                 android:textSize="24sp"
                 android:textStyle="bold"
                 android:textColor="@color/green"
@@ -135,7 +135,7 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="24dp"
                 app:boxStrokeColor="@color/green"
                 app:hintTextColor="@color/green"
                 app:startIconDrawable="@android:drawable/ic_lock_lock"
@@ -148,7 +148,7 @@
                     android:id="@+id/etConfirmPassword"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Xác nhận mật khẩu"
+                    android:hint="Nhập lại mật khẩu"
                     android:inputType="textPassword"
                     android:textSize="16sp"
                     android:textColor="@android:color/black" />
@@ -167,6 +167,34 @@
                 app:cornerRadius="28dp"
                 app:elevation="8dp"
                 android:layout_marginBottom="24dp" />
+
+            <!-- Divider -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="24dp">
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1"
+                    android:background="#E0E0E0" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="  Hoặc  "
+                    android:textColor="#999999"
+                    android:textSize="14sp" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1"
+                    android:background="#E0E0E0" />
+            </LinearLayout>
 
             <!-- Back to login link -->
             <LinearLayout
@@ -199,7 +227,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="KeepYFitness © 2025"
+        android:text="KeepYFitnessAdmin © 2025"
         android:textColor="@color/white"
         android:textSize="12sp"
         android:alpha="0.8"

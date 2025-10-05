@@ -103,7 +103,7 @@ class AdminUsersFragment : Fragment() {
 
             fun bind(user: User) {
                 userEmailText.text = user.email
-                userRoleText.text = "Role: ${user.role}"
+                userRoleText.text = "${user.role}"
                 itemView.setOnClickListener {
                     onClick(user)
                 }
