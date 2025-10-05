@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "941659007823",
+    "project_id": "keepyfitness-af141",
+    "storage_bucket": "keepyfitness-af141.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941659007823:android:84e4d0a176d002a20c733a",
+        "android_client_info": {
+          "package_name": "com.example.keepyfitness"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCxAvwva_P9MH33kswt0BIbs2OBTREpnM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941659007823:android:242e5c6a028f19340c733a",
+        "android_client_info": {
+          "package_name": "com.example.keepyfitnessadmin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCxAvwva_P9MH33kswt0BIbs2OBTREpnM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
